@@ -1,78 +1,74 @@
-const axios = require('axios');
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+import axios from "axios";
+import cheerio from "cheerio";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const SENT_COINS = new Map(); // coin+filter => lastSentTime
 
-const lastSent = {};
+const FILTERS = [
+  {
+    name: "🚀 Break >2",
+    url: "https://www.tradingview.com/crypto-screener/?filter=bitfinex~relvolume_above_2_and_price_above_10",
+  },
+  {
+    name: "📈 Bybit pretínanie EMA",
+    url: "https://www.tradingview.com/crypto-screener/?filter=bybit~ema5_cross_ema20_and_price_above_10",
+  },
+  {
+    name: "⚡ Break >3",
+    url: "https://www.tradingview.com/crypto-screener/?filter=bitfinex~change1h_above_3_and_price_above_10",
+  },
+  {
+    name: "🔻 Breakdown >2",
+    url: "https://www.tradingview.com/crypto-screener/?filter=bitfinex~chg1h_below_-2_and_price_above_10",
+  },
+  {
+    name: "💤 Low Volume <2",
+    url: "https://www.tradingview.com/crypto-screener/?filter=bitfinex~price_below_10_and_volume_below_2",
+  },
+];
 
-const delayMinutes = 15;
-
-async function sendTelegramMessage(message) {
-  await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+async function sendToTelegram(message) {
+  await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     chat_id: TELEGRAM_CHAT_ID,
     text: message,
-    parse_mode: "Markdown"
+    parse_mode: "HTML",
   });
 }
 
-function shouldSend(symbol) {
-  const now = Date.now();
-  if (!lastSent[symbol] || now - lastSent[symbol] > delayMinutes * 60 * 1000) {
-    lastSent[symbol] = now;
-    return true;
-  }
-  return false;
-}
-
-async function scan() {
+async function scrapeFilter(filter) {
   try {
-    const response = await axios.get("https://scanner.tradingview.com/crypto/scan", {
-      method: "POST",
-      data: {}
-    });
+    const { data } = await axios.get(filter.url);
+    const $ = cheerio.load(data);
+    const rows = $('a[href*="/symbols/"]');
 
-    const coins = response.data.data;
+    const now = Date.now();
 
-    const matched = [];
+    for (let i = 0; i < rows.length; i++) {
+      const symbol = $(rows[i]).text().trim();
+      const key = `${symbol}-${filter.name}`;
+      const lastSent = SENT_COINS.get(key);
 
-    for (const coin of coins) {
-      const s = coin.s;
-      const d = coin.d;
-      
-      const relVol = d[4];
-      const price = d[0];
-      const chg1h = d[2];
-      const ema5 = d[6];
-      const ema20 = d[7];
-      const exchange = d[5];
-
-      const matchedFilters = [];
-
-      if (relVol > 2 && price > 10) {
-        matchedFilters.push("🔥 Break >2");
-      }
-
-      if (chg1h > 3 && price > 10) {
-        matchedFilters.push("📉 Breakdown >3");
-      }
-
-      if (exchange === "BYBIT" && price > 10 && ema5 > ema20) {
-        matchedFilters.push("⚡ EMA Cross (Bybit)");
-      }
-
-      if (matchedFilters.length && shouldSend(s)) {
-        matched.push({ symbol: s, filters: matchedFilters });
+      if (!lastSent || now - lastSent > 15 * 60 * 1000) {
+        await sendToTelegram(`🔍 <b>${filter.name}</b>\n🎯 Coin: <code>${symbol}</code>`);
+        SENT_COINS.set(key, now);
       }
     }
-
-    for (const m of matched) {
-      const msg = `🚨 *${m.symbol}* splnil: ${m.filters.join(" + ")}`;
-      await sendTelegramMessage(msg);
-    }
-
-  } catch (error) {
-    console.error("❌ CHYBA PRI SKENOVANÍ:", error.message);
+  } catch (err) {
+    console.error(`Error with filter ${filter.name}:`, err.message);
   }
 }
 
-setInterval(scan, 60 * 1000); // každú 1 minútu
+async function runAllFilters() {
+  for (const filter of FILTERS) {
+    await scrapeFilter(filter);
+  }
+}
+
+setInterval(runAllFilters, 60 * 1000); // Každú 1 minútu
+console.log("⏳ Bot beží a skenuje filtre každú minútu...");
+
