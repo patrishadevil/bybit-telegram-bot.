@@ -7,7 +7,7 @@ const port = process.env.PORT || 3000;
 const TELEGRAM_TOKEN = '7797780157:AAGDbW7Gwndaajkx8GXYnYSmkoryAsj7GNs';
 const TELEGRAM_CHAT_ID = '5955557541';
 
-// Názvy filtrov presne ako v TradingView
+// Presné názvy filtrov z TradingView
 const filters = [
   'Breakout>2',
   'breakdown >3',
@@ -20,7 +20,7 @@ const SCAN_INTERVAL_MS = 60 * 1000; // každú 1 minútu
 
 async function fetchFilterResults(filter) {
   try {
-    const url = `https://www.tradingview.com/crypto-screener/?filter=${encodeURIComponent(filter)}`;
+    const url = `https://www.tradingview.com/crypto-screener/`;
     const response = await axios.get(url);
     const html = response.data;
 
@@ -30,26 +30,27 @@ async function fetchFilterResults(filter) {
 
     const now = Date.now();
     const freshTickers = tickers.filter(ticker => {
-      if (!alreadyAlerted[ticker]) return true;
-      return now - alreadyAlerted[ticker] > ALERT_DELAY_MINUTES * 60 * 1000;
+      if (!alreadyAlerted[filter]) alreadyAlerted[filter] = {};
+      if (!alreadyAlerted[filter][ticker]) return true;
+      return now - alreadyAlerted[filter][ticker] > ALERT_DELAY_MINUTES * 60 * 1000;
     });
 
     for (const ticker of freshTickers) {
-      alreadyAlerted[ticker] = now;
+      alreadyAlerted[filter][ticker] = now;
     }
 
     return freshTickers;
   } catch (error) {
-    console.error(`❌ Chyba pri filtrovaní ${filter}:`, error.message);
+    console.error(`❌ Chyba pri filtrovaní "${filter}":`, error.message);
     return [];
   }
 }
 
 async function scanAndAlert() {
   for (const filter of filters) {
-    const coins = await fetchFilterResults(filter);
-    if (coins.length > 0) {
-      const message = `🚨 *Filter:* ${filter}\n🎯 *Tickery:* ${coins.join(', ')}`;
+    const tickers = await fetchFilterResults(filter);
+    if (tickers.length > 0) {
+      const message = `🚨 *Filter:* ${filter}\n📈 *Ticker(y):* ${tickers.join(', ')}`;
       await sendTelegramMessage(message);
     }
   }
@@ -68,7 +69,7 @@ async function sendTelegramMessage(text) {
 }
 
 app.get('/', (req, res) => {
-  res.send('🚀 TradingView Telegram Alert beží!');
+  res.send('✅ TradingView Telegram Alert beží!');
 });
 
 app.listen(port, () => {
