@@ -1,4 +1,3 @@
-
 const express = require('express');
 const axios = require('axios');
 
@@ -8,7 +7,6 @@ const port = process.env.PORT || 3000;
 const TELEGRAM_TOKEN = '7797780157:AAGDbW7Gwndaajkx8GXYnYSmkoryAsj7GNs';
 const TELEGRAM_CHAT_ID = '5955557541';
 
-// Názvy filtrov presne ako v TradingView
 const filters = [
   'Breakout>2',
   'breakdown >3',
@@ -16,8 +14,8 @@ const filters = [
 ];
 
 const alreadyAlerted = {};
-const ALERT_DELAY_MINUTES = 1;  // Dočasne znížený cooldown na 1 minútu
-const SCAN_INTERVAL_MS = 60 * 1000; // každú 1 minútu
+const ALERT_DELAY_MINUTES = 15;
+const SCAN_INTERVAL_MS = 60 * 1000; // kontrola každú 1 minútu
 
 async function fetchFilterResults(filter) {
   try {
@@ -50,8 +48,7 @@ async function scanAndAlert() {
   for (const filter of filters) {
     const coins = await fetchFilterResults(filter);
     if (coins.length > 0) {
-      const message = `🚨 *Filter:* ${filter}
-🎯 *Tickery:* ${coins.join(', ')}`;
+      const message = `🚨 *Filter:* ${filter}\n💥 *Tickery:* ${coins.join(', ')}`;
       await sendTelegramMessage(message);
     }
   }
@@ -70,7 +67,7 @@ async function sendTelegramMessage(text) {
 }
 
 app.get('/', (req, res) => {
-  res.send('🚀 TradingView Telegram Alert beží!');
+  res.send('✅ TradingView Alert systém beží!');
 });
 
 app.listen(port, () => {
