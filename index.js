@@ -1,76 +1,102 @@
 require('dotenv').config();
-const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-const bot = new TelegramBot(TELEGRAM_TOKEN);
-
-const sendMessage = async (message) => {
-  try {
-    await bot.sendMessage(TELEGRAM_CHAT_ID, message);
-  } catch (error) {
-    console.error('Telegram Error:', error.message);
-  }
-};
-
 const filters = [
   {
     name: "Break >2",
-    url: "https://scanner.tradingview.com/crypto/scan",
-    payload: {
-      symbols: { screener: "crypto", exchange: "BINANCE" },
-      columns: ["name", "close"],
+    body: {
       filter: [
-        { left: "relative_volume_10d", operation: "greater", right: 2 },
-        { left: "close", operation: "greater", right: 10 }
-      ]
+        {
+          left: "relative_volume_10d",
+          operation: "greater",
+          right: 2
+        },
+        {
+          left: "close",
+          operation: "greater",
+          right: 10
+        }
+      ],
+      symbols: { screener: "crypto", exchange: "BINANCE", type: "crypto" },
+      columns: ["name", "close", "change", "relative_volume_10d"]
     }
   },
   {
     name: "Break >3",
-    url: "https://scanner.tradingview.com/crypto/scan",
-    payload: {
-      symbols: { screener: "crypto", exchange: "BYBIT" },
-      columns: ["name", "close"],
+    body: {
       filter: [
-        { left: "change_1h", operation: "greater", right: 3 },
-        { left: "close", operation: "greater", right: 10 }
-      ]
+        {
+          left: "change_1h",
+          operation: "greater",
+          right: 3
+        },
+        {
+          left: "close",
+          operation: "greater",
+          right: 10
+        }
+      ],
+      symbols: { screener: "crypto", exchange: "BINANCE", type: "crypto" },
+      columns: ["name", "close", "change_1h"]
     }
   },
   {
     name: "EMA(5) > EMA(20)",
-    url: "https://scanner.tradingview.com/crypto/scan",
-    payload: {
-      symbols: { screener: "crypto", exchange: "BYBIT" },
-      columns: ["name", "close"],
+    body: {
       filter: [
-        { left: "close", operation: "greater", right: 10 },
-        { left: "ta.ema(5)", operation: "greater", right: { left: "ta.ema(20)" } }
-      ]
+        {
+          left: "technical_ema_5",
+          operation: "greater",
+          right: "technical_ema_20"
+        },
+        {
+          left: "close",
+          operation: "greater",
+          right: 10
+        }
+      ],
+      symbols: { screener: "crypto", exchange: "BYBIT", type: "crypto" },
+      columns: ["name", "close", "technical_ema_5", "technical_ema_20"]
     }
   }
 ];
 
-const scanFilters = async () => {
+async function checkFilters() {
   for (const filter of filters) {
     try {
-      const res = await axios.post(filter.url, filter.payload);
-      const results = res.data.data;
+      const response = await axios.post(
+        'https://scanner.tradingview.com/crypto/scan',
+        filter.body,
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
-      if (results.length > 0) {
-        let message = `📡 *${filter.name}* Alert:\n`;
-        results.forEach(r => {
-          message += `・${r.d[0]} → $${r.d[1]}\n`;
-        });
-        await sendMessage(message);
+      const matches = response.data.data;
+      if (matches.length > 0) {
+        const message = `📈 ${filter.name} našiel:\n` + matches.map(m => `• ${m.d[0]} @ ${m.d[1]}`).join('\n');
+        await sendTelegramMessage(message);
+      } else {
+        console.log(`${filter.name}: nič nenašlo`);
       }
-    } catch (err) {
-      console.error(`${filter.name} Filter Error:`, err.message);
+    } catch (error) {
+      console.error(`${filter.name} Filter Error:`, error.message);
     }
   }
-};
+}
 
-setInterval(scanFilters, 60000);
+async function sendTelegramMessage(text) {
+  await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+    chat_id: TELEGRAM_CHAT_ID,
+    text: text
+  });
+}
+
+// Opakovanie každú minútu
+setInterval(checkFilters, 60 * 1000);
+checkFilters();
