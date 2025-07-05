@@ -12,7 +12,6 @@ const sendTelegramMessage = async (message) => {
   await axios.post(telegramUrl, {
     chat_id: process.env.TELEGRAM_CHAT_ID,
     text: message,
-    parse_mode: "Markdown"
   });
 };
 
@@ -21,8 +20,7 @@ const checkFilters = async () => {
     try {
       const response = await axios.post(filter.url, {
         filter: [],
-        symbols: { query: { types: [] }, tickers: [] },
-        columns: ["name", "close"],
+        symbols: { query: { types: [] }, tickers: [] }
       }, {
         headers: {
           "User-Agent": "Mozilla/5.0",
@@ -30,11 +28,9 @@ const checkFilters = async () => {
         },
       });
 
-      const data = response.data.data;
-
-      if (response.status === 200 && data.length > 0) {
-        const coinNames = data.map(entry => entry.d[0]); // 0 je 'name' z columns
-        const message = `🚨 *${filter.name}* našiel ${coinNames.length} tickerov:\n🎯 ${coinNames.join(', ')}`;
+      if (response.status === 200 && response.data.data.length > 0) {
+        const coins = response.data.data.map(entry => entry.s);
+        const message = `🔔 ${filter.name} našiel ${coins.length} tickerov:\n🎯 ${coins.join(", ")}`;
         await sendTelegramMessage(message);
       }
     } catch (error) {
