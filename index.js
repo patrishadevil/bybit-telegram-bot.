@@ -10,7 +10,7 @@ const TELEGRAM_CHAT_ID = '5955557541';
 // Názvy filtrov presne ako v TradingView
 const filters = [
   'Breakout>2',
-  'Breakdown>3',
+  'breakdown >3',
   'bybit pretínanie'
 ];
 
