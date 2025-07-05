@@ -1,62 +1,42 @@
-const express = require('express');
-const axios = require('axios');
-
-const app = express();
-const port = process.env.PORT || 3000;
-
-const TELEGRAM_TOKEN = '7797780157:AAGDbW7Gwndaajkx8GXYnYSmkoryAsj7GNs';
-const TELEGRAM_CHAT_ID = '5955557541';
+const axios = require("axios");
+require("dotenv").config();
 
 const filters = [
-  'Breakout>2',
-  'breakdown >3',
-  'bybit pretínanie'
+  { name: "Breakout >2", url: "https://scanner.tradingview.com/crypto/scan" },
+  { name: "Breakdown >3", url: "https://scanner.tradingview.com/crypto/scan" },
+  { name: "bybit pretínanie", url: "https://scanner.tradingview.com/crypto/scan" },
 ];
 
-async function fetchFilterResults(filter) {
-  try {
-    const url = `https://www.tradingview.com/crypto-screener/?filter=${encodeURIComponent(filter)}`;
-    const response = await axios.get(url);
-    const html = response.data;
+const sendTelegramMessage = async (message) => {
+  const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+  await axios.post(telegramUrl, {
+    chat_id: process.env.TELEGRAM_CHAT_ID,
+    text: message,
+  });
+};
 
-    const regex = /"ticker":"(.*?)"/g;
-    const matches = html.matchAll(regex);
-    const tickers = [...matches].map(m => m[1]);
-
-    return tickers;
-  } catch (error) {
-    console.error(`❌ Chyba pri filtrovaní ${filter}:`, error.message);
-    return [];
-  }
-}
-
-async function scanAndAlert() {
+const checkFilters = async () => {
   for (const filter of filters) {
-    const coins = await fetchFilterResults(filter);
-    if (coins.length > 0) {
-      const message = `🚨 *Filter:* ${filter}\n💥 *Tickery:* ${coins.join(', ')}`;
-      await sendTelegramMessage(message);
+    try {
+      const response = await axios.post(filter.url, {
+        filter: [],  // Nechávame prázdne, pretože používaš uložené filtre v TV
+        symbols: { query: { types: [] }, tickers: [] },
+        columns: ["name", "close"],
+      }, {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.status === 200 && response.data.data.length > 0) {
+        const message = `🔔 ${filter.name} našiel ${response.data.data.length} tickerov.`;
+        await sendTelegramMessage(message);
+      }
+    } catch (error) {
+      console.error(`❌ ${filter.name} Filter Error:`, error.message);
     }
   }
-}
+};
 
-async function sendTelegramMessage(text) {
-  try {
-    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-      chat_id: TELEGRAM_CHAT_ID,
-      text: text,
-      parse_mode: 'Markdown'
-    });
-  } catch (error) {
-    console.error('❌ Chyba pri posielaní správy do Telegramu:', error.message);
-  }
-}
-
-app.get('/', (req, res) => {
-  res.send('✅ TradingView Alert beží!');
-});
-
-app.listen(port, () => {
-  console.log(`🚀 Server beží na porte ${port}`);
-  setInterval(scanAndAlert, 60 * 1000); // každú 1 minútu
-});
+setInterval(checkFilters, 60 * 1000); // Spúšťaj každú minútu
