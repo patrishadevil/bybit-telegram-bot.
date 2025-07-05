@@ -1,42 +1,78 @@
-const axios = require("axios");
-require("dotenv").config();
+const axios = require('axios');
 
-const filters = [
-  { name: "Breakout >2", url: "https://scanner.tradingview.com/crypto/scan" },
-  { name: "Breakdown >3", url: "https://scanner.tradingview.com/crypto/scan" },
-  { name: "bybit pretínanie", url: "https://scanner.tradingview.com/crypto/scan" },
-];
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-const sendTelegramMessage = async (message) => {
-  const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
-  await axios.post(telegramUrl, {
-    chat_id: process.env.TELEGRAM_CHAT_ID,
+const lastSent = {};
+
+const delayMinutes = 15;
+
+async function sendTelegramMessage(message) {
+  await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+    chat_id: TELEGRAM_CHAT_ID,
     text: message,
+    parse_mode: "Markdown"
   });
-};
+}
 
-const checkFilters = async () => {
-  for (const filter of filters) {
-    try {
-      const response = await axios.post(filter.url, {
-        filter: [],  // Nechávame prázdne, pretože používaš uložené filtre v TV
-        symbols: { query: { types: [] }, tickers: [] },
-        columns: ["name", "close"],
-      }, {
-        headers: {
-          "User-Agent": "Mozilla/5.0",
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (response.status === 200 && response.data.data.length > 0) {
-        const message = `🔔 ${filter.name} našiel ${response.data.data.length} tickerov.`;
-        await sendTelegramMessage(message);
-      }
-    } catch (error) {
-      console.error(`❌ ${filter.name} Filter Error:`, error.message);
-    }
+function shouldSend(symbol) {
+  const now = Date.now();
+  if (!lastSent[symbol] || now - lastSent[symbol] > delayMinutes * 60 * 1000) {
+    lastSent[symbol] = now;
+    return true;
   }
-};
+  return false;
+}
 
-setInterval(checkFilters, 60 * 1000); // Spúšťaj každú minútu
+async function scan() {
+  try {
+    const response = await axios.get("https://scanner.tradingview.com/crypto/scan", {
+      method: "POST",
+      data: {}
+    });
+
+    const coins = response.data.data;
+
+    const matched = [];
+
+    for (const coin of coins) {
+      const s = coin.s;
+      const d = coin.d;
+      
+      const relVol = d[4];
+      const price = d[0];
+      const chg1h = d[2];
+      const ema5 = d[6];
+      const ema20 = d[7];
+      const exchange = d[5];
+
+      const matchedFilters = [];
+
+      if (relVol > 2 && price > 10) {
+        matchedFilters.push("🔥 Break >2");
+      }
+
+      if (chg1h > 3 && price > 10) {
+        matchedFilters.push("📉 Breakdown >3");
+      }
+
+      if (exchange === "BYBIT" && price > 10 && ema5 > ema20) {
+        matchedFilters.push("⚡ EMA Cross (Bybit)");
+      }
+
+      if (matchedFilters.length && shouldSend(s)) {
+        matched.push({ symbol: s, filters: matchedFilters });
+      }
+    }
+
+    for (const m of matched) {
+      const msg = `🚨 *${m.symbol}* splnil: ${m.filters.join(" + ")}`;
+      await sendTelegramMessage(msg);
+    }
+
+  } catch (error) {
+    console.error("❌ CHYBA PRI SKENOVANÍ:", error.message);
+  }
+}
+
+setInterval(scan, 60 * 1000); // každú 1 minútu
