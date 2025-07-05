@@ -29,7 +29,7 @@ const checkFilters = async () => {
       });
 
       if (response.status === 200 && response.data.data.length > 0) {
-        const coins = response.data.data.map(entry => entry.s);
+        const coins = response.data.data.slice(0, 10).map(entry => entry.s); // max 10 tickerov
         const message = `🔔 ${filter.name} našiel ${coins.length} tickerov:\n🎯 ${coins.join(", ")}`;
         await sendTelegramMessage(message);
       }
