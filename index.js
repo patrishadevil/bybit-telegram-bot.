@@ -1,53 +1,77 @@
+const express = require('express');
+const axios = require('axios');
 
-const fetch = require("node-fetch");
-const TelegramBot = require("node-telegram-bot-api");
+const app = express();
+const port = process.env.PORT || 3000;
 
-const TELEGRAM_TOKEN = "7797780157:AAGDbW7Gwndaajkx8GXYnYSmkoryAsj7GNs";
-const CHAT_ID = "5955557541";
-const bot = new TelegramBot(TELEGRAM_TOKEN);
+const TELEGRAM_TOKEN = '7797780157:AAGDbW7Gwndaajkx8GXYnYSmkoryAsj7GNs';
+const TELEGRAM_CHAT_ID = '5955557541';
 
-const FILTERS = [
-  { name: "Breakout >2", url: "https://www.tradingview.com/crypto-screener/" },
-  { name: "Breakdown >3", url: "https://www.tradingview.com/crypto-screener/" },
-  { name: "bybit pretínanie", url: "https://www.tradingview.com/crypto-screener/" }
+// Názvy filtrov presne ako v TradingView
+const filters = [
+  'Breakout>2',
+  'Breakdown>3',
+  'bybit pretínanie'
 ];
 
-const sentCoins = new Map();
+const alreadyAlerted = {};
+const ALERT_DELAY_MINUTES = 15;
+const SCAN_INTERVAL_MS = 60 * 1000; // každú 1 minútu
 
-async function checkFilters() {
-  for (const filter of FILTERS) {
-    try {
-      const response = await fetch(filter.url);
-      if (!response.ok) throw new Error(`Status ${response.status}`);
-      const text = await response.text();
+async function fetchFilterResults(filter) {
+  try {
+    const url = `https://www.tradingview.com/crypto-screener/?filter=${encodeURIComponent(filter)}`;
+    const response = await axios.get(url);
+    const html = response.data;
 
-      const matches = text.match(/"text":"([A-Z0-9]+)"/g) || [];
-      const coins = [...new Set(matches.map(m => m.split('"')[3]))];
+    const regex = /"ticker":"(.*?)"/g;
+    const matches = html.matchAll(regex);
+    const tickers = [...matches].map(m => m[1]);
 
-      const now = Date.now();
-      const coinsToSend = [];
+    const now = Date.now();
+    const freshTickers = tickers.filter(ticker => {
+      if (!alreadyAlerted[ticker]) return true;
+      return now - alreadyAlerted[ticker] > ALERT_DELAY_MINUTES * 60 * 1000;
+    });
 
-      for (const coin of coins) {
-        const lastSent = sentCoins.get(`${filter.name}-${coin}`) || 0;
-        if (now - lastSent > 15 * 60 * 1000) {
-          coinsToSend.push(coin);
-          sentCoins.set(`${filter.name}-${coin}`, now);
-        }
-      }
+    for (const ticker of freshTickers) {
+      alreadyAlerted[ticker] = now;
+    }
 
-      if (coinsToSend.length > 0) {
-        const message = `🔔 *${filter.name}*
+    return freshTickers;
+  } catch (error) {
+    console.error(`❌ Chyba pri filtrovaní ${filter}:`, error.message);
+    return [];
+  }
+}
 
-🎯 Nájdené coiny:
-${coinsToSend.map(c => `• ${c}`).join("
-")}`;
-        await bot.sendMessage(CHAT_ID, message, { parse_mode: "Markdown" });
-      }
-    } catch (error) {
-      console.error(`❌ CHYBA PRI SKENOVANÍ (${filter.name}):`, error.message);
+async function scanAndAlert() {
+  for (const filter of filters) {
+    const coins = await fetchFilterResults(filter);
+    if (coins.length > 0) {
+      const message = `🚨 *Filter:* ${filter}\n🎯 *Tickery:* ${coins.join(', ')}`;
+      await sendTelegramMessage(message);
     }
   }
 }
 
-setInterval(checkFilters, 60 * 1000);
-checkFilters();
+async function sendTelegramMessage(text) {
+  try {
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: TELEGRAM_CHAT_ID,
+      text: text,
+      parse_mode: 'Markdown'
+    });
+  } catch (error) {
+    console.error('❌ Chyba pri posielaní správy do Telegramu:', error.message);
+  }
+}
+
+app.get('/', (req, res) => {
+  res.send('🚀 TradingView Telegram Alert beží!');
+});
+
+app.listen(port, () => {
+  console.log(`🚀 Server beží na porte ${port}`);
+  setInterval(scanAndAlert, SCAN_INTERVAL_MS);
+});
