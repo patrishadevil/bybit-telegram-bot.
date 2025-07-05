@@ -13,10 +13,6 @@ const filters = [
   'bybit pretínanie'
 ];
 
-const alreadyAlerted = {};
-const ALERT_DELAY_MINUTES = 15;
-const SCAN_INTERVAL_MS = 60 * 1000; // kontrola každú 1 minútu
-
 async function fetchFilterResults(filter) {
   try {
     const url = `https://www.tradingview.com/crypto-screener/?filter=${encodeURIComponent(filter)}`;
@@ -27,17 +23,7 @@ async function fetchFilterResults(filter) {
     const matches = html.matchAll(regex);
     const tickers = [...matches].map(m => m[1]);
 
-    const now = Date.now();
-    const freshTickers = tickers.filter(ticker => {
-      if (!alreadyAlerted[ticker]) return true;
-      return now - alreadyAlerted[ticker] > ALERT_DELAY_MINUTES * 60 * 1000;
-    });
-
-    for (const ticker of freshTickers) {
-      alreadyAlerted[ticker] = now;
-    }
-
-    return freshTickers;
+    return tickers;
   } catch (error) {
     console.error(`❌ Chyba pri filtrovaní ${filter}:`, error.message);
     return [];
@@ -67,10 +53,10 @@ async function sendTelegramMessage(text) {
 }
 
 app.get('/', (req, res) => {
-  res.send('✅ TradingView Alert systém beží!');
+  res.send('✅ TradingView Alert beží!');
 });
 
 app.listen(port, () => {
   console.log(`🚀 Server beží na porte ${port}`);
-  setInterval(scanAndAlert, SCAN_INTERVAL_MS);
+  setInterval(scanAndAlert, 60 * 1000); // každú 1 minútu
 });
