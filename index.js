@@ -13,9 +13,15 @@ const filters = [
   'bybit pretínanie'
 ];
 
+const emojiMap = {
+  'Breakout>2': '🚀📈',
+  'breakdown >3': '📉🔥',
+  'bybit pretínanie': '🔁✨'
+};
+
 const alreadyAlerted = {};
 const ALERT_DELAY_MINUTES = 15;
-const SCAN_INTERVAL_MS = 60 * 1000;
+const SCAN_INTERVAL_MS = 60 * 1000; // každú 1 minútu
 
 async function fetchFilterResults(filter) {
   try {
@@ -37,10 +43,6 @@ async function fetchFilterResults(filter) {
       alreadyAlerted[ticker] = now;
     }
 
-    if (freshTickers.length > 0) {
-      console.log(`✅ Filter: ${filter} | Tickery: ${freshTickers.join(', ')}`);
-    }
-
     return freshTickers;
   } catch (error) {
     console.error(`❌ Chyba pri filtrovaní ${filter}:`, error.message);
@@ -52,7 +54,8 @@ async function scanAndAlert() {
   for (const filter of filters) {
     const coins = await fetchFilterResults(filter);
     if (coins.length > 0) {
-      const message = `🚨 *Filter:* ${filter}\n🎯 *Tickery:* ${coins.join(', ')}`;
+      const emoji = emojiMap[filter] || '⚠️';
+      const message = `${emoji} *Filter:* ${filter}\n🧩 *Výsledky ID:* ${coins.join(', ')}`;
       await sendTelegramMessage(message);
     }
   }
@@ -74,8 +77,7 @@ app.get('/', (req, res) => {
   res.send('🚀 TradingView Telegram Alert beží!');
 });
 
-app.listen(port, async () => {
+app.listen(port, () => {
   console.log(`🚀 Server beží na porte ${port}`);
-  await sendTelegramMessage('✅ Test: Server beží a Telegram funguje!');
   setInterval(scanAndAlert, SCAN_INTERVAL_MS);
 });
