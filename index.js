@@ -1,3 +1,4 @@
+
 const axios = require("axios");
 require("dotenv").config();
 
@@ -7,11 +8,8 @@ const filters = [
   { name: "bybit pretínanie", url: "https://scanner.tradingview.com/crypto/scan" },
 ];
 
-const lastAlertTime = {}; // coin -> timestamp
+const lastAlertTime = {};
 const DELAY_MS = 15 * 60 * 1000; // 15 minút
-
-// Blacklist substrings (shitcoiny)
-const blacklist = ["BULL", "BEAR", "3L", "3S", "5L", "5S", ".P", "DOWN", "UP", "1000", "100", "TRY"];
 
 const sendTelegramMessage = async (message) => {
   const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -27,10 +25,6 @@ const getTimeString = (timestamp) => {
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
   return `${hours}:${minutes}`;
-};
-
-const isBlacklisted = (coin) => {
-  return blacklist.some(word => coin.includes(word));
 };
 
 const checkFilters = async () => {
@@ -50,12 +44,12 @@ const checkFilters = async () => {
         const now = Date.now();
         const coins = response.data.data
           .map(entry => entry.s)
-          .filter(coin => !isBlacklisted(coin))
+          .filter(coin => coin.includes("USD"))
           .filter(coin => {
             if (!lastAlertTime[coin]) return true;
             return now - lastAlertTime[coin] > DELAY_MS;
           })
-          .slice(0, 10); // max 10 coinov
+          .slice(0, 10);
 
         coins.forEach(coin => lastAlertTime[coin] = now);
 
