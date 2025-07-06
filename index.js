@@ -7,9 +7,11 @@ const filters = [
   { name: "bybit pretínanie", url: "https://scanner.tradingview.com/crypto/scan" },
 ];
 
-const lastAlertTime = {}; // coin -> timestamp posledného poslania
-const firstSeenTime = {}; // coin -> timestamp prvého nájdenia
+const lastAlertTime = {}; // coin -> timestamp
 const DELAY_MS = 15 * 60 * 1000; // 15 minút
+
+// Blacklist substrings (shitcoiny)
+const blacklist = ["BULL", "BEAR", "3L", "3S", "5L", "5S", ".P", "DOWN", "UP", "1000", "100", "TRY"];
 
 const sendTelegramMessage = async (message) => {
   const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -27,6 +29,10 @@ const getTimeString = (timestamp) => {
   return `${hours}:${minutes}`;
 };
 
+const isBlacklisted = (coin) => {
+  return blacklist.some(word => coin.includes(word));
+};
+
 const checkFilters = async () => {
   for (const filter of filters) {
     try {
@@ -42,25 +48,20 @@ const checkFilters = async () => {
 
       if (response.status === 200 && response.data.data.length > 0) {
         const now = Date.now();
-        const newCoins = response.data.data
+        const coins = response.data.data
           .map(entry => entry.s)
+          .filter(coin => !isBlacklisted(coin))
           .filter(coin => {
             if (!lastAlertTime[coin]) return true;
             return now - lastAlertTime[coin] > DELAY_MS;
           })
           .slice(0, 10); // max 10 coinov
 
-        if (newCoins.length > 0) {
-          const coinList = newCoins.map(coin => {
-            if (!firstSeenTime[coin]) firstSeenTime[coin] = now;
-            lastAlertTime[coin] = now;
+        coins.forEach(coin => lastAlertTime[coin] = now);
 
-            const time = getTimeString(firstSeenTime[coin]);
-            const isNew = now - firstSeenTime[coin] < 10000; // nový = našlo pred <10 sek
-            return `${isNew ? "🎯 " : ""}• ${coin} 🕒 ${time}`;
-          }).join("\n");
-
-          const message = `🚨 *${filter.name}* našiel ${newCoins.length} coinov:\n\n${coinList}`;
+        if (coins.length > 0) {
+          const coinList = coins.map(c => `• ${c} 🕒 ${getTimeString(now)}`).join("\n");
+          const message = `🚨 *${filter.name}* našiel ${coins.length} coinov:\n\n${coinList}`;
           await sendTelegramMessage(message);
         }
       }
@@ -70,4 +71,4 @@ const checkFilters = async () => {
   }
 };
 
-setInterval(checkFilters, 60 * 1000); // každú 1 minútu
+setInterval(checkFilters, 60 * 1000); // Každú minútu
