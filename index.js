@@ -7,7 +7,8 @@ const filters = [
   { name: "bybit pretínanie", url: "https://scanner.tradingview.com/crypto/scan" },
 ];
 
-const lastAlertTime = {}; // coin -> timestamp
+const lastAlertTime = {}; // coin -> timestamp posledného poslania
+const firstSeenTime = {}; // coin -> timestamp prvého nájdenia
 const DELAY_MS = 15 * 60 * 1000; // 15 minút
 
 const sendTelegramMessage = async (message) => {
@@ -41,7 +42,7 @@ const checkFilters = async () => {
 
       if (response.status === 200 && response.data.data.length > 0) {
         const now = Date.now();
-        const coins = response.data.data
+        const newCoins = response.data.data
           .map(entry => entry.s)
           .filter(coin => {
             if (!lastAlertTime[coin]) return true;
@@ -49,11 +50,17 @@ const checkFilters = async () => {
           })
           .slice(0, 10); // max 10 coinov
 
-        coins.forEach(coin => lastAlertTime[coin] = now);
+        if (newCoins.length > 0) {
+          const coinList = newCoins.map(coin => {
+            if (!firstSeenTime[coin]) firstSeenTime[coin] = now;
+            lastAlertTime[coin] = now;
 
-        if (coins.length > 0) {
-          const coinList = coins.map(c => `• ${c} 🕒 ${getTimeString(now)}`).join("\n");
-          const message = `🚨 *${filter.name}* našiel ${coins.length} coinov:\n\n${coinList}`;
+            const time = getTimeString(firstSeenTime[coin]);
+            const isNew = now - firstSeenTime[coin] < 10000; // nový = našlo pred <10 sek
+            return `${isNew ? "🎯 " : ""}• ${coin} 🕒 ${time}`;
+          }).join("\n");
+
+          const message = `🚨 *${filter.name}* našiel ${newCoins.length} coinov:\n\n${coinList}`;
           await sendTelegramMessage(message);
         }
       }
@@ -63,4 +70,4 @@ const checkFilters = async () => {
   }
 };
 
-setInterval(checkFilters, 60 * 1000); // Každú minútu
+setInterval(checkFilters, 60 * 1000); // každú 1 minútu
