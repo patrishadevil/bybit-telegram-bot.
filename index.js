@@ -7,24 +7,27 @@ const filters = [
   { name: "bybit pretínanie", url: "https://scanner.tradingview.com/crypto/scan" },
 ];
 
-const lastAlertTime = {}; // coin -> timestamp
-const DELAY_MS = 15 * 60 * 1000; // 15 minút
+const alreadyAlerted = {};
+const ALERT_DELAY_MS = 15 * 60 * 1000; // 15 minút
 
 const sendTelegramMessage = async (message) => {
   const telegramUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
   await axios.post(telegramUrl, {
     chat_id: process.env.TELEGRAM_CHAT_ID,
     text: message,
-    parse_mode: "Markdown"
   });
 };
 
 const checkFilters = async () => {
+  const now = new Date();
+  const currentTime = now.toTimeString().split(" ")[0]; // napr. "10:22:14"
+
   for (const filter of filters) {
     try {
       const response = await axios.post(filter.url, {
         filter: [],
-        symbols: { query: { types: [] }, tickers: [] }
+        symbols: { query: { types: [] }, tickers: [] },
+        columns: ["name", "close"],
       }, {
         headers: {
           "User-Agent": "Mozilla/5.0",
@@ -33,19 +36,21 @@ const checkFilters = async () => {
       });
 
       if (response.status === 200 && response.data.data.length > 0) {
-        const now = Date.now();
         const coins = response.data.data
-          .map(entry => entry.s)
-          .filter(coin => {
-            if (!lastAlertTime[coin]) return true;
-            return now - lastAlertTime[coin] > DELAY_MS;
-          })
-          .slice(0, 10); // max 10
+          .map(entry => entry.s) // napr. "BYBIT:BTCUSDT"
+          .filter(ticker => {
+            const lastAlert = alreadyAlerted[ticker];
+            return !lastAlert || (now - lastAlert > ALERT_DELAY_MS);
+          });
 
-        coins.forEach(coin => lastAlertTime[coin] = now);
+        coins.forEach(ticker => {
+          alreadyAlerted[ticker] = now;
+        });
 
         if (coins.length > 0) {
-          const message = `🚨 *${filter.name}* našiel ${coins.length} coinov:\n🎯 ${coins.join(", ")}`;
+          const message = `🔔 *${filter.name}* našiel ${coins.length} tickerov:\n` +
+            coins.map(c => `🎯 ${c} (čas: ${currentTime})`).join("\n");
+
           await sendTelegramMessage(message);
         }
       }
@@ -55,4 +60,4 @@ const checkFilters = async () => {
   }
 };
 
-setInterval(checkFilters, 60 * 1000); // Každú minútu
+setInterval(checkFilters, 60 * 1000); // Spúšťaj každú minútu
